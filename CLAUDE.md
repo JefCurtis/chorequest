@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-CYD Chore Tracker — an ESP32-based touchscreen chore list for kids that syncs with Todoist. Built for the Cheap Yellow Display (CYD) hardware.
+ChoreQuest — an ESP32-based touchscreen chore tracker for kids that syncs with Todoist. Built for the Cheap Yellow Display (CYD) hardware.
 
 ## Tech Stack
 
