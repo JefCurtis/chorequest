@@ -56,6 +56,11 @@ Sections in the Todoist project:
 - **Weekly sections** (any name containing "week" or "chore") — filtered to show this week's tasks, recur "every monday"
 - **Rewards** section — uncompletable tasks (prefixed with `* `), shown as daily rewards on completion screen
 
+## Git Rules
+
+- Do NOT add co-author tags to commits
+- Break commits into logical units (e.g., separate config, UI, API, assets)
+
 ## Conventions
 
 - All personal config goes in `secrets.h`, never hardcoded
