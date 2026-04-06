@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Todoist__find-projects",
+      "WebFetch(domain:docs.platformio.org)",
+      "Bash(git:*)",
+      "Bash(pio run:*)",
+      "WebFetch(domain:developer.todoist.com)",
+      "Bash(curl:*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Count:', len\\(d.get\\('results',[]\\)\\)\\); [print\\(t['content'], '-', t['project_id']\\) for t in d['results'][:10]]\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Chores ID:', d['id']\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(t['id'], t['content']\\) for t in d['results']]\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(t['section_id'], t['content']\\) for t in d['results']]\")",
+      "Bash(python3 -c \"import sys,json; print\\(json.load\\(sys.stdin\\)['name']\\)\")",
+      "Bash(python3 -c ':*)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(t['content'], t.get\\('due'\\)\\) for t in d['results']]\")",
+      "Read(//private/tmp/lv_port_esp32/**)",
+      "Read(//private/tmp/lvgl_esp32_drivers/**)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('Rewards ID:', d['id']\\)\")",
+      "WebFetch(domain:projecthub.arduino.cc)",
+      "Read(//tmp/**)",
+      "Bash(python3:*)",
+      "WebFetch(domain:makerworld.com)"
+    ]
+  }
+}
