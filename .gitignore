@@ -2,3 +2,5 @@
 .vscode
 include/secrets.h
 compile_commands.json
+.cache
+.DS_Store
