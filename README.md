@@ -33,7 +33,15 @@ Kids check off tasks on the device, and everything syncs back to your Todoist pr
 pipx install platformio
 ```
 
-### 2. Configure secrets
+### 2. IDE support (optional)
+
+Generate compile commands for clangd-based editors (Cursor, VS Code):
+
+```bash
+pio run -t compiledb
+```
+
+### 3. Configure secrets
 
 Copy the example and fill in your values:
 
@@ -54,7 +62,7 @@ Edit `include/secrets.h`:
 | `DST_OFFSET` | Daylight saving (0 or 1) |
 | `WEEKLY_REWARD` | Reward text for weekly chores (e.g., "$10") |
 
-### 3. Set up Todoist project
+### 4. Set up Todoist project
 
 Create a project with these sections:
 
@@ -65,7 +73,7 @@ Create a project with these sections:
 
 Section names are flexible — any section with "week" or "chore" in the name is treated as weekly. Everything else is treated as daily.
 
-### 4. Build and flash
+### 5. Build and flash
 
 ```bash
 pio run --target upload --upload-port /dev/cu.usbserial-XXX
