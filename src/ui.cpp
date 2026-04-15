@@ -192,19 +192,37 @@ static void checkboxEventCb(lv_event_t* e) {
 
 // ===== CELEBRATION =====
 
-// Get a pseudo-randomized reward index for today.
+// Get a weighted pseudo-randomized reward index for today.
 // Stable within a day (same index all day long) but sequential days look
 // randomized instead of cycling through rewards in order. Seeded with
-// (year * 1000 + day-of-year) and hashed through xorshift32 before the
-// modulo so small reward pools don't get obvious patterns.
+// (year * 1000 + day-of-year), hashed through xorshift32, then used to
+// draw from a weighted pool — rewards with higher Todoist priority take
+// up proportionally more slots in the pool. A reward with weight=5 is
+// 5x more likely to be picked than one with weight=1.
 static int getDailyRewardIndex() {
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo) || rewardCount == 0) return 0;
+
+    // Sum all weights. Zero-weight rewards can't be picked.
+    uint32_t totalWeight = 0;
+    for (int i = 0; i < rewardCount; i++) {
+        if (rewards[i].weight > 0) totalWeight += (uint32_t)rewards[i].weight;
+    }
+    if (totalWeight == 0) return 0;
+
     uint32_t seed = (uint32_t)(timeinfo.tm_year + 1900) * 1000u + (uint32_t)timeinfo.tm_yday;
     seed ^= seed << 13;
     seed ^= seed >> 17;
     seed ^= seed << 5;
-    return (int)(seed % (uint32_t)rewardCount);
+
+    uint32_t roll = seed % totalWeight;
+    uint32_t running = 0;
+    for (int i = 0; i < rewardCount; i++) {
+        if (rewards[i].weight <= 0) continue;
+        running += (uint32_t)rewards[i].weight;
+        if (roll < running) return i;
+    }
+    return rewardCount - 1;  // unreachable but keeps compiler happy
 }
 
 // ===== REWARD BANK HELPERS =====
@@ -244,7 +262,7 @@ static void maybeEnqueueTodaysReward() {
     if (isTodayAlreadyBanked(todayPrefix)) return;
 
     int idx = getDailyRewardIndex();
-    String rewardText = rewards[idx];
+    String rewardText = rewards[idx].content;
     if (rewardText.startsWith("* ")) rewardText = rewardText.substring(2);
 
     bankQueue[bankQueueCount++] = todayPrefix + rewardText;
@@ -797,7 +815,7 @@ void buildUI() {
                     lv_obj_set_style_text_align(rewardTitle, LV_TEXT_ALIGN_CENTER, 0);
 
                     int rewardIdx = getDailyRewardIndex();
-                    String rewardText = rewards[rewardIdx];
+                    String rewardText = rewards[rewardIdx].content;
                     if (rewardText.startsWith("* ")) rewardText = rewardText.substring(2);
 
                     lv_obj_t* rewardLabel = lv_label_create(list);

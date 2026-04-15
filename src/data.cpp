@@ -8,7 +8,7 @@ Section sections[MAX_SECTIONS];
 int sectionCount = 0;
 int activeTab = 0;
 
-String rewards[MAX_REWARDS];
+Reward rewards[MAX_REWARDS];
 int rewardCount = 0;
 String rewardsSectionId = "";
 

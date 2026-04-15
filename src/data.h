@@ -22,11 +22,22 @@ struct BankedReward {
     String content;   // display text, with date prefix stripped
 };
 
+// A reward in the pool with a weight derived from its Todoist priority.
+// Higher weight = more likely to be picked on any given day.
+//   Todoist p1 (red, urgent)  -> weight 5
+//   Todoist p2 (orange, high) -> weight 3
+//   Todoist p3 (blue, medium) -> weight 2
+//   Todoist p4 (default)      -> weight 1
+struct Reward {
+    String content;
+    int weight;
+};
+
 // ===== CONSTANTS =====
 
 static const int MAX_TASKS = 25;
 static const int MAX_SECTIONS = 4;
-static const int MAX_REWARDS = 15;
+static const int MAX_REWARDS = 30;
 static const int MAX_BANKED = 30;
 static const int MAX_QUEUE = 10;
 static const int MAX_BANK_QUEUE = 5;
@@ -44,7 +55,7 @@ extern Section sections[MAX_SECTIONS];
 extern int sectionCount;
 extern int activeTab;
 
-extern String rewards[MAX_REWARDS];
+extern Reward rewards[MAX_REWARDS];
 extern int rewardCount;
 extern String rewardsSectionId;
 

@@ -65,10 +65,23 @@ void fetchTasks() {
                 String sid = obj["section_id"].as<String>();
                 if (sid == "null") sid = "";
 
-                // Rewards go to separate array
+                // Rewards go to separate array, with a weight derived
+                // from Todoist priority. Todoist REST API returns
+                // priority as an int 1..4 where 4 = p1 (urgent, red)
+                // and 1 = p4 (default).
                 if (sid == rewardsSectionId && rewardsSectionId.length() > 0) {
                     if (rewardCount < MAX_REWARDS) {
-                        rewards[rewardCount++] = obj["content"].as<String>();
+                        rewards[rewardCount].content = obj["content"].as<String>();
+                        int prio = obj["priority"].is<int>() ? obj["priority"].as<int>() : 1;
+                        int weight;
+                        switch (prio) {
+                            case 4: weight = 5; break;  // p1 (red)
+                            case 3: weight = 3; break;  // p2 (orange)
+                            case 2: weight = 2; break;  // p3 (blue)
+                            default: weight = 1;        // p4 (default)
+                        }
+                        rewards[rewardCount].weight = weight;
+                        rewardCount++;
                     }
                     continue;
                 }
