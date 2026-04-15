@@ -192,12 +192,19 @@ static void checkboxEventCb(lv_event_t* e) {
 
 // ===== CELEBRATION =====
 
-// Get a deterministic reward index for today (same all day, changes daily)
+// Get a pseudo-randomized reward index for today.
+// Stable within a day (same index all day long) but sequential days look
+// randomized instead of cycling through rewards in order. Seeded with
+// (year * 1000 + day-of-year) and hashed through xorshift32 before the
+// modulo so small reward pools don't get obvious patterns.
 static int getDailyRewardIndex() {
     struct tm timeinfo;
     if (!getLocalTime(&timeinfo) || rewardCount == 0) return 0;
-    int dayOfYear = timeinfo.tm_yday;
-    return dayOfYear % rewardCount;
+    uint32_t seed = (uint32_t)(timeinfo.tm_year + 1900) * 1000u + (uint32_t)timeinfo.tm_yday;
+    seed ^= seed << 13;
+    seed ^= seed >> 17;
+    seed ^= seed << 5;
+    return (int)(seed % (uint32_t)rewardCount);
 }
 
 // ===== BUILD UI =====
