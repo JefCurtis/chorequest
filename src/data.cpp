@@ -12,8 +12,15 @@ String rewards[MAX_REWARDS];
 int rewardCount = 0;
 String rewardsSectionId = "";
 
+BankedReward bankedRewards[MAX_BANKED];
+int bankedCount = 0;
+String rewardBankSectionId = "";
+
 String completeQueue[MAX_QUEUE];
 int queueCount = 0;
+
+String bankQueue[MAX_BANK_QUEUE];
+int bankQueueCount = 0;
 
 unsigned long lastRefresh = 0;
 unsigned long lastComplete = 0;
@@ -22,6 +29,7 @@ bool screenDimmed = false;
 bool screenOff = false;
 bool pendingRefresh = false;
 bool pendingWake = false;
+bool pendingReset = false;
 String lastKnownDate = "";
 
 const unsigned long DIM_TIMEOUT = 300000;

@@ -207,13 +207,174 @@ static int getDailyRewardIndex() {
     return (int)(seed % (uint32_t)rewardCount);
 }
 
+// ===== REWARD BANK HELPERS =====
+
+// Returns the display text for a banked reward (strips the "YYYY-MM-DD: " prefix).
+static String stripBankDatePrefix(const String& content) {
+    // Expected format: "2026-04-14: Something". 10 chars + ": " = 12.
+    if (content.length() > 12 && content.charAt(4) == '-' && content.charAt(7) == '-'
+        && content.charAt(10) == ':' && content.charAt(11) == ' ') {
+        return content.substring(12);
+    }
+    return content;
+}
+
+// Returns true if a banked reward tagged with today's date already exists,
+// either in the fetched bankedRewards[] array or in the pending bankQueue[].
+static bool isTodayAlreadyBanked(const String& todayPrefix) {
+    for (int i = 0; i < bankedCount; i++) {
+        if (bankedRewards[i].content.startsWith(todayPrefix)) return true;
+    }
+    for (int i = 0; i < bankQueueCount; i++) {
+        if (bankQueue[i].startsWith(todayPrefix)) return true;
+    }
+    return false;
+}
+
+// If today's daily reward isn't already banked (or queued), enqueue it.
+// Called from the UI render path when allDailySectionsDone becomes true.
+static void maybeEnqueueTodaysReward() {
+    if (rewardCount == 0 || rewardBankSectionId.length() == 0) return;
+    if (bankQueueCount >= MAX_BANK_QUEUE) return;
+
+    String today = getTodayDate();  // "YYYY-MM-DD"
+    if (today.length() != 10) return;
+
+    String todayPrefix = today + ": ";
+    if (isTodayAlreadyBanked(todayPrefix)) return;
+
+    int idx = getDailyRewardIndex();
+    String rewardText = rewards[idx];
+    if (rewardText.startsWith("* ")) rewardText = rewardText.substring(2);
+
+    bankQueue[bankQueueCount++] = todayPrefix + rewardText;
+}
+
+// ===== SHARED STYLING =====
+
+// Dark pastel rainbow palette used by both the regular task list and
+// the reward bank list. File-level so both paths can reach it.
+static const uint32_t rowColors[] = {
+    0x2D1B3D,  // deep plum
+    0x1B2D3D,  // midnight blue
+    0x1B3D2D,  // forest teal
+    0x2D3D1B,  // olive dark
+    0x3D2D1B,  // warm brown
+    0x3D1B2D,  // berry
+    0x1B3D3D,  // dark cyan
+    0x3D1B1B,  // dark rose
+    0x2B1B3D,  // indigo
+    0x1B3D1B,  // dark green
+};
+static const int ROW_COLOR_COUNT = 10;
+
+// ===== RESET OVERLAY =====
+
+// Widgets owned by the reset overlay. File-scope so updateResetProgress
+// can mutate them between showResetOverlay() and the next buildUI() call.
+// Nulled out at the start of buildUI() since lv_obj_clean there destroys
+// the underlying objects.
+static lv_obj_t* resetCounterLabel = nullptr;
+static lv_obj_t* resetProgressBar = nullptr;
+
+// Pumps the display to flush pending draws. Used by showResetOverlay and
+// updateResetProgress so changes actually appear on-screen before the
+// caller resumes blocking work.
+static void flushDisplay(int cycles) {
+    lv_refr_now(NULL);
+    for (int i = 0; i < cycles; i++) {
+        lv_timer_handler();
+        delay(10);
+    }
+}
+
+// Shows a full-screen "Resetting tasks..." overlay with a counter + bar.
+// Called from the main loop before resetAllTasks runs so the user knows
+// the action is in flight and the UI is intentionally frozen. The bar's
+// range is set later by updateResetProgress once the task count is known.
+void showResetOverlay() {
+    lv_obj_t* scr = lv_screen_active();
+    lv_obj_clean(scr);
+
+    // Solid black background so there's no doubt the overlay took over.
+    lv_obj_set_style_bg_color(scr, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+
+    resetCounterLabel = lv_label_create(scr);
+    lv_label_set_text(resetCounterLabel, "Resetting tasks...");
+    lv_obj_set_style_text_font(resetCounterLabel, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(resetCounterLabel, lv_color_hex(0xE91E8C), 0);
+    lv_obj_align(resetCounterLabel, LV_ALIGN_CENTER, 0, -20);
+
+    resetProgressBar = lv_bar_create(scr);
+    lv_obj_set_size(resetProgressBar, 240, 14);
+    lv_obj_align(resetProgressBar, LV_ALIGN_CENTER, 0, 18);
+    lv_obj_set_style_bg_color(resetProgressBar, lv_color_hex(0x2A1040), 0);
+    lv_obj_set_style_bg_color(resetProgressBar, lv_color_hex(0xE91E8C), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(resetProgressBar, 4, 0);
+    lv_obj_set_style_radius(resetProgressBar, 4, LV_PART_INDICATOR);
+    lv_obj_set_style_border_width(resetProgressBar, 0, 0);
+    lv_bar_set_range(resetProgressBar, 0, 100);
+    lv_bar_set_value(resetProgressBar, 0, LV_ANIM_OFF);
+
+    flushDisplay(5);
+}
+
+// Called from resetAllTasks after each PATCH. Updates the counter label
+// ("Resetting tasks... 3/15") and the progress bar. Silently no-ops if
+// the overlay widgets aren't alive (e.g. called outside a reset flow).
+void updateResetProgress(int current, int total) {
+    if (!resetCounterLabel || !resetProgressBar || total <= 0) return;
+
+    char buf[40];
+    snprintf(buf, sizeof(buf), "Resetting tasks... %d/%d", current, total);
+    lv_label_set_text(resetCounterLabel, buf);
+
+    lv_bar_set_range(resetProgressBar, 0, total);
+    lv_bar_set_value(resetProgressBar, current, LV_ANIM_OFF);
+
+    flushDisplay(2);
+}
+
+// ===== BANK CHECKBOX EVENT =====
+
+// Tap handler for a banked reward row. user_data holds the banked
+// reward's task ID (pointer to a static String that lives for the
+// lifetime of the UI). Enqueues a completion — the row stays on-screen
+// with a strikethrough until the next refresh cycle drops it.
+static void bankCheckboxEventCb(lv_event_t* e) {
+    lv_obj_t* cb = (lv_obj_t*)lv_event_get_target(e);
+    String* idPtr = (String*)lv_event_get_user_data(e);
+    if (!idPtr || idPtr->length() == 0) return;
+
+    if (!lv_obj_has_state(cb, LV_STATE_CHECKED)) return;
+
+    // Already queued? Ignore the second tap.
+    for (int q = 0; q < queueCount; q++) {
+        if (completeQueue[q] == *idPtr) return;
+    }
+
+    if (queueCount < MAX_QUEUE) {
+        completeQueue[queueCount++] = *idPtr;
+    }
+    lastComplete = millis();
+    pendingRefresh = true;
+    lastActivity = millis();
+
+    lv_obj_set_style_text_color(cb, lv_color_hex(0x555555), LV_PART_MAIN);
+    lv_obj_set_style_text_decor(cb, LV_TEXT_DECOR_STRIKETHROUGH, LV_PART_MAIN);
+}
+
 // ===== BUILD UI =====
 
 void buildUI() {
     // Save active tab before rebuilding
     int savedTab = activeTab;
 
-    // Clear screen
+    // Clear screen — this destroys the reset overlay widgets, so null
+    // their static pointers before they become dangling references.
+    resetCounterLabel = nullptr;
+    resetProgressBar = nullptr;
     lv_obj_clean(lv_screen_active());
 
     // Apply pink/purple theme
@@ -227,15 +388,23 @@ void buildUI() {
     tabview = lv_tabview_create(lv_screen_active());
     lv_tabview_set_tab_bar_size(tabview, 34);
 
-    // Create tabs from sections + settings
+    // Create tabs from sections
     for (int i = 0; i < sectionCount; i++) {
         tabPages[i] = lv_tabview_add_tab(tabview, sections[i].name.c_str());
     }
 
+    // Reward Bank tab (save icon) — narrow, between sections and settings.
+    // LVGL v9 has no STAR/HEART/GIFT symbol; SAVE is the closest
+    // semantic match for "banked rewards."
+    lv_obj_t* bankPage = lv_tabview_add_tab(tabview, LV_SYMBOL_SAVE);
+
     // Settings tab (gear icon)
     lv_obj_t* settingsPage = lv_tabview_add_tab(tabview, LV_SYMBOL_SETTINGS);
 
-    // Resize tab buttons and set smaller font
+    // Resize tab buttons and set smaller font.
+    // Section tabs flex to fill remaining space; the two icon tabs (bank,
+    // settings) are fixed-width so they stay visually comfortable regardless
+    // of how many sections exist.
     lv_obj_t* tabBar = lv_tabview_get_tab_bar(tabview);
     lv_obj_remove_flag(tabBar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_text_font(tabBar, &lv_font_montserrat_14, 0);
@@ -243,9 +412,10 @@ void buildUI() {
     for (uint32_t i = 0; i < childCount; i++) {
         lv_obj_t* btn = lv_obj_get_child(tabBar, i);
         if (i < (uint32_t)sectionCount) {
-            lv_obj_set_flex_grow(btn, 3);
-        } else {
             lv_obj_set_flex_grow(btn, 1);
+        } else {
+            lv_obj_set_flex_grow(btn, 0);
+            lv_obj_set_width(btn, 44);
         }
     }
 
@@ -255,19 +425,19 @@ void buildUI() {
     lv_obj_set_style_pad_top(settingsPage, 30, 0);
     lv_obj_set_style_pad_row(settingsPage, 15, 0);
 
-    // Reset Tasks button
+    // Reset Tasks button — defers the actual work to the main loop via
+    // the pendingReset flag. Calling buildUI() from inside an event
+    // handler destroys the button that's currently firing, which is
+    // why this path used to silently fail.
     lv_obj_t* resetBtn = lv_btn_create(settingsPage);
     lv_obj_set_size(resetBtn, 200, 45);
     lv_obj_set_style_bg_color(resetBtn, lv_color_hex(0xE91E8C), 0);
     lv_obj_set_style_bg_color(resetBtn, lv_color_hex(0xFF69B4), LV_STATE_PRESSED);
     lv_obj_set_style_radius(resetBtn, 8, 0);
     lv_obj_add_event_cb(resetBtn, [](lv_event_t* e) {
-        resetAllTasks();
-        tabTotalsInitialized = false;  // reset totals on explicit reset
-        fetchSections();
-        fetchTasks();
-        activeTab = 0;
-        buildUI();
+        Serial.println("[RESET] button tapped, setting pendingReset=true");
+        pendingReset = true;
+        lastActivity = millis();
     }, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t* resetLabel = lv_label_create(resetBtn);
@@ -280,6 +450,61 @@ void buildUI() {
     lv_label_set_text(wifiLabel, wifiInfo.c_str());
     lv_obj_set_style_text_font(wifiLabel, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(wifiLabel, lv_color_hex(0x888888), 0);
+
+    // ===== REWARD BANK TAB =====
+    // Match the regular task list style: list container with colored rows,
+    // each row wraps a checkbox. Tap a row or its checkbox to redeem.
+    lv_obj_set_flex_flow(bankPage, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(bankPage, 4, 0);
+    lv_obj_set_style_pad_row(bankPage, 3, 0);
+    lv_obj_set_scrollbar_mode(bankPage, LV_SCROLLBAR_MODE_OFF);
+
+    if (bankedCount == 0) {
+        lv_obj_set_flex_align(bankPage, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_t* empty = lv_label_create(bankPage);
+        lv_label_set_text(empty, "No rewards banked yet.\nFinish your daily tasks\nto start earning!");
+        lv_obj_set_style_text_font(empty, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(empty, lv_color_hex(0x888888), 0);
+        lv_obj_set_style_text_align(empty, LV_TEXT_ALIGN_CENTER, 0);
+    } else {
+        // Stable storage for task IDs passed as event user_data. Static
+        // so addresses stay valid for the lifetime of the UI; rewritten
+        // from bankedRewards[] on every buildUI() call.
+        static String bankedIds[MAX_BANKED];
+
+        for (int i = 0; i < bankedCount; i++) {
+            bankedIds[i] = bankedRewards[i].id;
+
+            // Row container (matches regular task row styling)
+            lv_obj_t* row = lv_obj_create(bankPage);
+            lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+            lv_obj_set_style_bg_color(row, lv_color_hex(rowColors[i % ROW_COLOR_COUNT]), 0);
+            lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+            lv_obj_set_style_radius(row, 5, 0);
+            lv_obj_set_style_border_width(row, 0, 0);
+            lv_obj_set_style_pad_all(row, 6, 0);
+            lv_obj_set_style_pad_left(row, 8, 0);
+            lv_obj_set_scrollbar_mode(row, LV_SCROLLBAR_MODE_OFF);
+            lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_add_event_cb(row, rowClickCb, LV_EVENT_CLICKED, NULL);
+
+            // Checkbox inside the row — same style as regular task rows.
+            lv_obj_t* cb = lv_checkbox_create(row);
+            String display = stripBankDatePrefix(bankedRewards[i].content);
+            lv_checkbox_set_text(cb, display.c_str());
+            lv_obj_set_style_text_font(cb, &lv_font_montserrat_16, LV_PART_MAIN);
+            lv_obj_set_style_text_color(cb, lv_color_hex(0xEEEEEE), LV_PART_MAIN);
+            lv_obj_set_style_pad_ver(cb, 4, LV_PART_MAIN);
+
+            lv_obj_set_style_border_width(cb, 2, LV_PART_INDICATOR);
+            lv_obj_set_style_border_color(cb, lv_color_hex(0xBBBBBB), LV_PART_INDICATOR);
+            lv_obj_set_style_radius(cb, 4, LV_PART_INDICATOR);
+            lv_obj_set_style_pad_all(cb, 3, LV_PART_INDICATOR);
+            lv_obj_set_style_bg_color(cb, lv_color_hex(0xE91E8C), LV_PART_INDICATOR | LV_STATE_CHECKED);
+
+            lv_obj_add_event_cb(cb, bankCheckboxEventCb, LV_EVENT_VALUE_CHANGED, &bankedIds[i]);
+        }
+    }
 
     // Restore active tab
     if (savedTab > 0 && savedTab <= sectionCount) {
@@ -295,21 +520,6 @@ void buildUI() {
 
     String today = getTodayDate();
     String weekEnd = getWeekEndDate();
-
-    // Dark pastel rainbow palette
-    static const uint32_t rowColors[] = {
-        0x2D1B3D,  // deep plum
-        0x1B2D3D,  // midnight blue
-        0x1B3D2D,  // forest teal
-        0x2D3D1B,  // olive dark
-        0x3D2D1B,  // warm brown
-        0x3D1B2D,  // berry
-        0x1B3D3D,  // dark cyan
-        0x3D1B1B,  // dark rose
-        0x2B1B3D,  // indigo
-        0x1B3D1B,  // dark green
-    };
-    static const int ROW_COLOR_COUNT = 10;
 
     for (int tab = 0; tab < sectionCount; tab++) {
         lv_obj_t* tabPage = tabPages[tab];
@@ -574,6 +784,12 @@ void buildUI() {
                 }
 
                 if (allDailySectionsDone) {
+                    // Auto-bank today's reward the first time we notice the
+                    // daily sections are all done. The helper dedupes against
+                    // bankedRewards[] and bankQueue[] so repeat buildUI() calls
+                    // don't enqueue multiple times.
+                    maybeEnqueueTodaysReward();
+
                     lv_obj_t* rewardTitle = lv_label_create(list);
                     lv_label_set_text(rewardTitle, "Today's reward:");
                     lv_obj_set_style_text_font(rewardTitle, &lv_font_montserrat_14, 0);

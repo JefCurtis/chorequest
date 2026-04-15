@@ -51,6 +51,28 @@ void loop() {
         buildUI();
     }
 
+    // Reset-tasks flow — runs the blocking HTTP cycle here (outside the
+    // LVGL event loop) so we can safely rebuild the UI afterward. Shows
+    // a full-screen "Resetting tasks..." overlay first so the user knows
+    // the action is in flight and the UI is intentionally frozen.
+    if (pendingReset) {
+        Serial.println("[RESET] main loop entering reset branch");
+        pendingReset = false;
+        Serial.println("[RESET] showing overlay");
+        showResetOverlay();
+        Serial.println("[RESET] overlay shown, calling resetAllTasks");
+        resetAllTasks(updateResetProgress);
+        Serial.println("[RESET] resetAllTasks returned, refetching");
+        tabTotalsInitialized = false;
+        fetchSections();
+        fetchTasks();
+        activeTab = 0;
+        Serial.println("[RESET] rebuilding UI");
+        buildUI();
+        lastRefresh = millis();
+        Serial.println("[RESET] done");
+    }
+
     // After 2s idle, rebuild UI with local state (removes checked tasks)
     if (pendingRefresh && millis() - lastComplete > COMPLETE_DEBOUNCE) {
         pendingRefresh = false;
@@ -74,6 +96,16 @@ void loop() {
         for (int i = 1; i < queueCount; i++)
             completeQueue[i - 1] = completeQueue[i];
         queueCount--;
+    }
+
+    // Process ONE queued reward-bank POST per loop (non-blocking)
+    if (bankQueueCount > 0 && !pendingRefresh) {
+        addBankedReward(bankQueue[0]);
+        for (int i = 1; i < bankQueueCount; i++)
+            bankQueue[i - 1] = bankQueue[i];
+        bankQueueCount--;
+        // Refresh so the new banked reward shows up in the bank tab
+        lastRefresh = 0;
     }
 
     // Check for day change — reset totals at midnight
