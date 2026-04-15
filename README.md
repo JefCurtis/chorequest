@@ -4,6 +4,10 @@ A touchscreen chore tracker for kids, built on the ESP32 Cheap Yellow Display (C
 
 Kids check off tasks on the device, and everything syncs back to your Todoist project. Completing all tasks reveals a daily reward.
 
+## Demo
+
+https://www.youtube.com/watch?v=kBPSlSYZXRc
+
 ## Features
 
 - **Tabbed sections** — organize tasks by Morning, Night, Weekly (or any custom sections)
@@ -72,6 +76,8 @@ Create a project with these sections:
 - **Rewards** — uncompletable reward options (prefix with `* `, e.g., "* Extra screen time")
 
 Section names are flexible — any section with "week" or "chore" in the name is treated as weekly. Everything else is treated as daily.
+
+A starter template is included: import [`todoist-template.csv`](todoist-template.csv) into Todoist to get a pre-built project with example tasks. After importing, set recurring due dates on each task (e.g., "every day" for daily tasks, "every monday" for weekly).
 
 ### 5. Build and flash
 
